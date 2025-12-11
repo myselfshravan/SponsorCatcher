@@ -1,0 +1,13 @@
+[project]
+name = "sponsorcatcher"
+version = "0.1.0"
+description = "Speed-optimized sponsor slot booking automation"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "selenium>=4.27.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+sponsorcatcher = "main:main"
