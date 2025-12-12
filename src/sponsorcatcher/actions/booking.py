@@ -1,5 +1,7 @@
 """High-level booking workflow orchestration."""
 
+from typing import Set
+
 from selenium.webdriver.remote.webdriver import WebDriver
 
 from ..config import BookingConfig, Config
@@ -40,6 +42,8 @@ class BookingAction:
         self.config = config
         self.booking_config = booking_config
         self._logged_in = False  # Track login state for monitoring
+        self._last_available_keyword: str | None = None
+        self._sold_out_blocklist: Set[str] = set()
 
         # Initialize page objects
         self.login_page = LoginPage(driver, config)
@@ -77,46 +81,65 @@ class BookingAction:
         self.sponsor_page.navigate()
         print(f"[{step}/{total_steps}] On sponsor page!")
 
-        # Step 3: Search for product
+        # Step 3: Search for products (supports multiple prioritized keywords)
         step += 1
-        keyword = self.booking_config.search_keyword
-        print(f"[{step}/{total_steps}] Searching for '{keyword}'...")
-        self.sponsor_page.search(keyword)
-        print(f"[{step}/{total_steps}] Search complete!")
+        keywords = [
+            kw for kw in self.booking_config.search_keywords if kw and kw not in self._sold_out_blocklist
+        ]
+        if self._last_available_keyword and self._last_available_keyword in keywords:
+            # Reorder so the last known available keyword is tried first.
+            keywords = [self._last_available_keyword] + [
+                kw for kw in keywords if kw != self._last_available_keyword
+            ]
+        print(f"[{step}/{total_steps}] Searching for products (prioritized): {keywords}")
 
-        # Step 4: Find and add product to cart
-        step += 1
-        print(f"[{step}/{total_steps}] Finding product...")
-        product_card = self.sponsor_page.find_product_by_name(keyword)
+        selected_product = None
+        checkout_keyword = None
 
-        if not product_card:
-            print(f"ERROR: Product containing '{keyword}' not found!")
+        for kw in keywords:
+            print(f"  -> Searching for '{kw}'...")
+            self.sponsor_page.search(kw)
+
+            product_card = self.sponsor_page.find_product_by_name(kw)
+            if not product_card:
+                print(f"     Not found, skipping.")
+                continue
+
+            title = self.sponsor_page.get_product_title(product_card)
+            price = self.sponsor_page.get_product_price(product_card)
+            print(f"     Found: {title} - {price}")
+
+            if not self.sponsor_page.is_product_available(product_card):
+                print("     Product is SOLD OUT, skipping.")
+                continue
+
+            print("     Adding to cart...")
+            if self.sponsor_page.add_to_cart(product_card):
+                checkout_keyword = kw
+                selected_product = title or kw
+                print("     Added.")
+                break  # Stop after first available product
+            else:
+                print("     Failed to add, skipping.")
+
+        if not selected_product:
+            print("ERROR: No requested products were found/available.")
             return False
-
-        title = self.sponsor_page.get_product_title(product_card)
-        price = self.sponsor_page.get_product_price(product_card)
-        print(f"[{step}/{total_steps}] Found: {title} - {price}")
-
-        # Check availability
-        if not self.sponsor_page.is_product_available(product_card):
-            print("ERROR: Product is SOLD OUT!")
-            return False
-
-        # Add to cart
-        print(f"[{step}/{total_steps}] Adding to cart...")
-        if not self.sponsor_page.add_to_cart(product_card):
-            print("ERROR: Failed to add to cart!")
-            return False
-        print(f"[{step}/{total_steps}] Added to cart!")
+        print(f"  Added product: {selected_product}")
 
         # Step 5: Click Review & Checkout
         step += 1
         print(f"[{step}/{total_steps}] Clicking Review & Checkout...")
 
-        # Re-find the product card (it may have been refreshed)
-        product_card = self.sponsor_page.find_product_by_name(keyword)
+        # Re-find a selected card (prefer the last successfully added keyword)
+        product_card = None
+        if checkout_keyword:
+            self.sponsor_page.search(checkout_keyword)
+            product_card = self.sponsor_page.find_product_by_name(checkout_keyword)
         if not product_card:
-            print("ERROR: Lost product card after adding to cart!")
+            product_card = self.sponsor_page.find_first_selected_card()
+        if not product_card:
+            print("ERROR: Could not locate a selected product card to proceed to checkout.")
             return False
 
         if not self.sponsor_page.click_review_checkout(product_card):
@@ -128,10 +151,20 @@ class BookingAction:
         step += 1
         print(f"[{step}/{total_steps}] Checking cart status...")
 
-        if self.cart_page.is_sold_out():
-            message = self.cart_page.get_sold_out_message()
-            print(f"ERROR: Item is SOLD OUT! {message}")
-            return False
+        sold_out_items = self.cart_page.get_sold_out_items()
+        if sold_out_items:
+            print(f"  Cart has sold-out items: {sold_out_items}, removing and continuing.")
+            self._mark_blocklisted_keywords(sold_out_items)
+            removed = self.cart_page.remove_items_by_names(sold_out_items)
+            if removed:
+                print(f"  Removed: {removed}")
+            else:
+                print("  Failed to remove sold-out items; aborting.")
+                return False
+            # Re-check after removal
+            if self.cart_page.is_sold_out():
+                print("ERROR: Cart still shows sold-out items after removal.")
+                return False
 
         print(f"[{step}/{total_steps}] Cart looks good, clicking Checkout...")
         if not self.cart_page.click_checkout():
@@ -183,27 +216,38 @@ class BookingAction:
             self.login_page.login_and_wait()
             self._logged_in = True
             print("  Login successful!")
+        else:
+            print("  Session already logged in, reusing existing session.")
 
         # Navigate to sponsor page (this refreshes the page)
         print("  Navigating to sponsor page...")
         self.sponsor_page.navigate()
 
-        # Search for product
-        keyword = self.booking_config.search_keyword
-        print(f"  Searching for '{keyword}'...")
-        self.sponsor_page.search(keyword)
+        # Search across prioritized keywords
+        keywords = [
+            kw for kw in self.booking_config.search_keywords if kw and kw not in self._sold_out_blocklist
+        ]
+        for kw in keywords:
+            print(f"  Searching for '{kw}'...")
+            self.sponsor_page.search(kw)
+            product_card = self.sponsor_page.find_product_by_name(kw)
+            if not product_card:
+                print("    Not found.")
+                continue
+            is_available = self.sponsor_page.is_product_available(product_card)
+            if is_available:
+                title = self.sponsor_page.get_product_title(product_card)
+                print(f"  Found available: {title}")
+                self._last_available_keyword = kw
+                return True
+            print("    Product is SOLD OUT.")
+        print("  None of the requested products are available.")
+        return False
 
-        # Find product
-        product_card = self.sponsor_page.find_product_by_name(keyword)
-        if not product_card:
-            print(f"  Product '{keyword}' not found!")
-            return False
-
-        # Check availability
-        is_available = self.sponsor_page.is_product_available(product_card)
-        if is_available:
-            title = self.sponsor_page.get_product_title(product_card)
-            print(f"  Found available: {title}")
-        else:
-            print("  Product is SOLD OUT")
-        return is_available
+    def _mark_blocklisted_keywords(self, sold_out_items: list[str]) -> None:
+        """Mark keywords that correspond to sold-out items so we skip them next time."""
+        for item in sold_out_items:
+            lower_item = item.lower()
+            for kw in self.booking_config.search_keywords:
+                if kw and kw.lower() in lower_item:
+                    self._sold_out_blocklist.add(kw)

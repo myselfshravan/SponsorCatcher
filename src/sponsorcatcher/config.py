@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 import os
 
 import yaml
@@ -92,7 +92,8 @@ class MonitoringConfig:
 class BookingConfig:
     """Full booking configuration from YAML."""
 
-    search_keyword: str
+    search_keyword: str  # legacy single keyword (first in list)
+    search_keywords: Tuple[str, ...]
     payment: PaymentConfig
     monitoring: MonitoringConfig
 
@@ -124,9 +125,19 @@ class BookingConfig:
 
         payment_data = data.get("payment", {})
         monitoring_data = data.get("monitoring", {})
+        # Support prioritized list of keywords, falling back to single keyword.
+        yaml_keywords = data.get("search_keywords") or []
+        if isinstance(yaml_keywords, str):
+            yaml_keywords = [yaml_keywords]
+
+        legacy_keyword = data.get("search_keyword", "")
+        keywords_list = yaml_keywords if yaml_keywords else [legacy_keyword]
+        # Normalize and drop empties
+        keywords_list = [kw for kw in (k.strip() for k in keywords_list) if kw]
 
         return cls(
             search_keyword=data.get("search_keyword", ""),
+            search_keywords=tuple(keywords_list),
             payment=PaymentConfig(
                 name_on_card=payment_data.get("name_on_card", ""),
                 card_number=payment_data.get("card_number", ""),

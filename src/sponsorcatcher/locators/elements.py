@@ -60,6 +60,7 @@ class CartPageLocators:
 
     # Sold out warning message
     SOLD_OUT_WARNING = (By.CSS_SELECTOR, ".alert.alert-warning")
+    CART_WARNING_ITEMS = (By.CSS_SELECTOR, ".alert.alert-warning li")
 
     # Cart buttons
     CLEAR_CART_BTN = (By.CSS_SELECTOR, ".btn-cart-clear")
@@ -68,6 +69,9 @@ class CartPageLocators:
 
     # Cart items
     CART_ITEMS = (By.CSS_SELECTOR, ".cart-item")
+    CART_ITEM_ROWS = (By.CSS_SELECTOR, "tr[id*='rptrCart'][id$='trItemRow']")
+    CART_ITEM_NAME = (By.CSS_SELECTOR, "h3 a")
+    CART_ITEM_REMOVE_BTN = (By.CSS_SELECTOR, ".cart-delete-button")
 
 
 class CheckoutPageLocators:

@@ -320,6 +320,8 @@ class RunTab(ttk.Frame):
                 implicit_wait=0.5,
             )
 
+            keywords = config.get("search_keywords") or [config["search_keyword"]]
+
             payment_config = PaymentConfig(
                 name_on_card=config["payment"]["name_on_card"],
                 card_number=config["payment"]["card_number"],
@@ -343,12 +345,13 @@ class RunTab(ttk.Frame):
 
             booking_config = BookingConfig(
                 search_keyword=config["search_keyword"],
+                search_keywords=tuple(keywords),
                 payment=payment_config,
                 monitoring=monitoring_config,
             )
 
             print(f"Target: {login_config.sponsor_url}")
-            print(f"Search: {booking_config.search_keyword}")
+            print(f"Search: {list(booking_config.search_keywords)}")
             print(f"Interval: {interval} seconds")
             print()
 
@@ -376,6 +379,8 @@ class RunTab(ttk.Frame):
                             if not submit_order:
                                 print("Review and submit manually.")
                             print("=" * 50)
+                            # Stop monitoring loop explicitly to avoid re-entry.
+                            self._stop_flag.set()
                             break
                         else:
                             print(f"[Check #{check_count}] Booking failed, will retry...")
@@ -433,6 +438,8 @@ class RunTab(ttk.Frame):
                 implicit_wait=0.5,
             )
 
+            keywords = config.get("search_keywords") or [config["search_keyword"]]
+
             payment_config = PaymentConfig(
                 name_on_card=config["payment"]["name_on_card"],
                 card_number=config["payment"]["card_number"],
@@ -457,13 +464,14 @@ class RunTab(ttk.Frame):
 
             booking_config = BookingConfig(
                 search_keyword=config["search_keyword"],
+                search_keywords=tuple(keywords),
                 payment=payment_config,
                 monitoring=monitoring_config,
             )
 
             # Create browser
             print(f"Target: {login_config.sponsor_url}")
-            print(f"Search: {booking_config.search_keyword}")
+            print(f"Search: {list(booking_config.search_keywords)}")
             print()
 
             self._driver = create_driver(login_config)

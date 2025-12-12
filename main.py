@@ -36,7 +36,7 @@ def run_cli() -> None:
         return
 
     print(f"Target: {config.sponsor_url}")
-    print(f"Search: {booking_config.search_keyword}")
+    print(f"Search: {list(booking_config.search_keywords)}")
     print()
 
     # Check for --submit flag

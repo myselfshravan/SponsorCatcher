@@ -1,6 +1,7 @@
 """Shopping cart page object."""
 
 from selenium.webdriver.remote.webdriver import WebDriver
+from selenium.webdriver.remote.webelement import WebElement
 
 from ..locators.elements import CartPageLocators
 from .base_page import BasePage
@@ -89,3 +90,73 @@ class CartPage(BasePage):
             True if checkout button is present.
         """
         return self.is_element_present(CartPageLocators.CHECKOUT_BTN, timeout=2.0)
+
+    def get_sold_out_items(self) -> list[str]:
+        """Extract sold-out item names from the warning message if present."""
+        names: list[str] = []
+        try:
+            items = self.find_all(CartPageLocators.CART_WARNING_ITEMS, timeout=1.0)
+            for item in items:
+                text = item.text.strip()
+                if text:
+                    names.append(text)
+        except Exception:
+            pass
+
+        if names:
+            return names
+
+        # Fallback to parsing the alert text lines.
+        message = self.get_sold_out_message()
+        if message:
+            lines = [line.strip() for line in message.splitlines() if line.strip()]
+            if len(lines) > 1:
+                names = lines[1:]
+        return names
+
+    def list_cart_items(self) -> list[tuple[str, WebElement]]:
+        """Return a list of (name, delete_button_element) for cart rows."""
+        items: list[tuple[str, object]] = []
+        rows = self.find_all(CartPageLocators.CART_ITEM_ROWS, timeout=2.0)
+        for row in rows:
+            try:
+                name_el = row.find_element(*CartPageLocators.CART_ITEM_NAME)
+                delete_el = row.find_element(*CartPageLocators.CART_ITEM_REMOVE_BTN)
+                name = name_el.text.strip()
+                items.append((name, delete_el))
+            except Exception:
+                continue
+        return items
+
+    def remove_items_by_names(self, names: list[str]) -> list[str]:
+        """Remove cart items whose names match provided list (case-insensitive).
+
+        Returns:
+            List of names successfully removed.
+        """
+        removed: list[str] = []
+        if not names:
+            return removed
+
+        names_lower = [n.lower() for n in names]
+        items = self.list_cart_items()
+
+        # Auto-confirm any JS confirmation dialogs before clicking remove.
+        try:
+            self.driver.execute_script(
+                "window.confirm = function(){return true;};"
+                "if (window.dialog && dialog.confirm) { dialog.confirm = function(){return true;}; }"
+            )
+        except Exception:
+            pass
+
+        for item_name, delete_el in items:
+            try:
+                if any(n in item_name.lower() for n in names_lower):
+                    self.click_js(delete_el)
+                    removed.append(item_name)
+                    self.wait_for_page_load()
+            except Exception:
+                continue
+
+        return removed

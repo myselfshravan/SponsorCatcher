@@ -247,6 +247,12 @@ class ConfigTab(ttk.Frame):
         Returns:
             Configuration dictionary.
         """
+        # Allow comma-separated keywords for prioritization
+        raw_keywords = self.keyword_var.get()
+        keyword_list = [kw.strip() for kw in raw_keywords.split(",") if kw.strip()]
+        if not keyword_list:
+            keyword_list = [raw_keywords.strip()]
+
         return {
             "login": {
                 "email": self.email_var.get(),
@@ -254,6 +260,7 @@ class ConfigTab(ttk.Frame):
                 "sponsor_url": self.sponsor_url_var.get(),
             },
             "search_keyword": self.keyword_var.get(),
+            "search_keywords": keyword_list,
             "payment": {
                 "name_on_card": self.name_on_card_var.get(),
                 "card_number": self.card_number_var.get(),
@@ -277,7 +284,10 @@ class ConfigTab(ttk.Frame):
             self.password_var.set(login.get("password", ""))
             self.sponsor_url_var.set(login.get("sponsor_url", ""))
 
-        if "search_keyword" in config:
+        if "search_keywords" in config and config["search_keywords"]:
+            # Join back into a comma-separated string for the field
+            self.keyword_var.set(", ".join(config["search_keywords"]))
+        elif "search_keyword" in config:
             self.keyword_var.set(config["search_keyword"])
 
         if "payment" in config:

@@ -1,9 +1,15 @@
 # SponsorCatcher Configuration
 # Copy this file to config.yaml and fill in your details
 
-# Sponsor search keyword
-# The automation will search for this keyword and select the matching product
+# Sponsor search keywords (prioritized)
+# The automation will try each in order and add all available to cart.
+# Option 1: single keyword (legacy)
 search_keyword: "Name Badges"
+# Option 2: prioritized list (uncomment to use)
+# search_keywords:
+#   - "Lanyard"
+#   - "Hotel Keycard"
+#   - "Name Badge"
 
 # Payment details for checkout
 payment:

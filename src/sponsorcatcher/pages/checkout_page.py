@@ -101,6 +101,11 @@ class CheckoutPage(BasePage):
         # Scroll to submit button so user can see it
         self.scroll_to_submit_button()
 
+        if self.is_submit_button_visible():
+            print("Submit button detected.")
+        else:
+            print("Submit button not visible yet (may be hidden by validation).")
+
     def scroll_to_submit_button(self) -> None:
         """Scroll the submit button into view.
 
@@ -121,6 +126,14 @@ class CheckoutPage(BasePage):
             True if submit button is present.
         """
         return self.is_element_present(CheckoutPageLocators.SUBMIT_BTN, timeout=2.0)
+
+    def is_submit_button_visible(self) -> bool:
+        """Check if submit button is present and displayed."""
+        try:
+            element = self.find_fast(CheckoutPageLocators.SUBMIT_BTN, timeout=2.0)
+            return element.is_displayed()
+        except Exception:
+            return False
 
     def submit_order(self) -> bool:
         """Click Submit Your Order button.
@@ -167,7 +180,11 @@ class CheckoutPage(BasePage):
         Returns:
             True if validation error is present.
         """
-        return self.is_element_present(CheckoutPageLocators.VALIDATION_ERROR, timeout=1.0)
+        try:
+            element = self.find_fast(CheckoutPageLocators.VALIDATION_ERROR, timeout=1.0)
+            return element.is_displayed()
+        except Exception:
+            return False
 
     def get_order_total(self) -> str:
         """Get the order total amount.
@@ -185,4 +202,4 @@ class CheckoutPage(BasePage):
         Returns:
             True if ready to submit.
         """
-        return self.is_submit_button_present() and not self.has_validation_error()
+        return self.is_submit_button_visible() and not self.has_validation_error()

@@ -5,6 +5,7 @@ from typing import Optional
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support.ui import WebDriverWait
 
 from ..config import Config
 from ..locators.elements import SponsorPageLocators
@@ -49,7 +50,8 @@ class SponsorPage(BasePage):
 
         # Wait for page to update after postback
         self.wait_for_page_load()
-        self.wait_short(1.0)  # Extra wait for dynamic content
+        self.wait_for_ajax(timeout=6.0)
+        self._wait_for_products(timeout=8.0)
 
     def find_product_by_name(self, name: str) -> Optional[WebElement]:
         """Find product card containing the specified name in title.
@@ -62,13 +64,24 @@ class SponsorPage(BasePage):
         Returns:
             Product card WebElement or None if not found.
         """
-        card = self._find_matching_card(name)
-        if card:
-            return card
+        self._wait_for_products(timeout=8.0)
 
-        # Some products only render after scrolling the page/container.
-        print(f"  Product '{name}' not visible yet, scrolling to load more results...")
-        return self._scroll_and_find_product(name)
+        for attempt in range(3):
+            card = self._find_matching_card(name)
+            if card:
+                return card
+
+            # Some products only render after scrolling the page/container.
+            print(f"  Product '{name}' not visible yet, scrolling to load more results...")
+            card = self._scroll_and_find_product(name)
+            if card:
+                return card
+
+            # Give the page a moment to load additional results before retrying.
+            self.wait_for_ajax(timeout=2.0)
+            self.wait_short(0.8)
+
+        return None
 
     def _find_matching_card(self, name: str) -> Optional[WebElement]:
         """Locate a product card whose title contains the given name."""
@@ -136,6 +149,17 @@ class SponsorPage(BasePage):
 
         return self._find_matching_card(name)
 
+    def _wait_for_products(self, timeout: float = 6.0) -> None:
+        """Wait until the products container and at least one card are present."""
+        try:
+            self.find_fast(SponsorPageLocators.PRODUCTS_CONTAINER, timeout=timeout)
+            WebDriverWait(self.driver, timeout).until(
+                lambda d: len(d.find_elements(*SponsorPageLocators.PRODUCT_CARDS)) > 0
+            )
+        except Exception:
+            # Non-fatal; caller will still attempt to find/scroll.
+            pass
+
     def is_product_in_cart(self, product_card: WebElement) -> bool:
         """Check if product is already in cart (has 'selected' class).
 
@@ -194,16 +218,24 @@ class SponsorPage(BasePage):
         try:
             # Find the Review & Checkout button within this card
             # It's a green button with "Checkout" text
-            checkout_btn = product_card.find_element(
-                By.XPATH,
-                ".//a[contains(@class, 'btn') and contains(@class, 'green') and contains(text(), 'Checkout')]",
-            )
+            checkout_btn = None
+            try:
+                checkout_btn = product_card.find_element(
+                    By.XPATH,
+                    ".//a[contains(@class, 'btn') and contains(@class, 'green') and contains(text(), 'Checkout')]",
+                )
+            except Exception:
+                pass
+            # Fallback: search globally if not found inside the card
+            if checkout_btn is None:
+                checkout_btn = self.find_fast(SponsorPageLocators.REVIEW_CHECKOUT_BTN, timeout=3.0)
 
             # Store current URL to detect navigation
             current_url = self.driver.current_url
 
             # Scroll and click using JS
             self.scroll_to_element(checkout_btn)
+            self.wait_short(0.2)
             self.click_js(checkout_btn)
 
             # Wait for navigation
@@ -276,3 +308,11 @@ class SponsorPage(BasePage):
             return title_element.text.strip()
         except Exception:
             return ""
+
+    def find_first_selected_card(self) -> Optional[WebElement]:
+        """Return any selected product card (already in cart)."""
+        try:
+            cards = self.find_all(SponsorPageLocators.PRODUCT_CARD_SELECTED, timeout=2.0)
+        except Exception:
+            cards = []
+        return cards[0] if cards else None
