@@ -1,0 +1,27 @@
+# SponsorCatcher Configuration
+# Copy this file to config.yaml and fill in your details
+
+# Sponsor search keyword
+# The automation will search for this keyword and select the matching product
+search_keyword: "Name Badges"
+
+# Payment details for checkout
+payment:
+  name_on_card: "Your Name Here"
+  card_number: "4111111111111111"
+  cvv: "123"
+  exp_month: "12"
+  exp_year: "2026"
+  billing_zip: "12345"
+  confirmation_email: "your-email@example.com"
+
+# Monitoring settings (future feature)
+monitoring:
+  enabled: false
+  interval_seconds: 30
+  email_on_available: true
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  smtp_user: ""
+  smtp_password: ""
+  notify_email: ""

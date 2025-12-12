@@ -2,14 +2,16 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 import os
 
+import yaml
 from dotenv import load_dotenv
 
 
 @dataclass(frozen=True)
 class Config:
-    """Immutable configuration container for speed and safety."""
+    """Immutable configuration for login credentials (from .env)."""
 
     email: str
     password: str
@@ -18,7 +20,7 @@ class Config:
     implicit_wait: float
 
     @classmethod
-    def load(cls, env_path: Path | None = None) -> "Config":
+    def load(cls, env_path: Optional[Path] = None) -> "Config":
         """Load configuration from .env file.
 
         Args:
@@ -56,4 +58,92 @@ class Config:
                 "https://members.manufacturedhousing.org/sponsorships/become-a-sponsor",
             ),
             implicit_wait=float(os.getenv("IMPLICIT_WAIT", "0.5")),
+        )
+
+
+@dataclass(frozen=True)
+class PaymentConfig:
+    """Payment details configuration."""
+
+    name_on_card: str
+    card_number: str
+    cvv: str
+    exp_month: str
+    exp_year: str
+    billing_zip: str
+    confirmation_email: str
+
+
+@dataclass(frozen=True)
+class MonitoringConfig:
+    """Monitoring configuration (future feature)."""
+
+    enabled: bool
+    interval_seconds: int
+    email_on_available: bool
+    smtp_host: str
+    smtp_port: int
+    smtp_user: str
+    smtp_password: str
+    notify_email: str
+
+
+@dataclass(frozen=True)
+class BookingConfig:
+    """Full booking configuration from YAML."""
+
+    search_keyword: str
+    payment: PaymentConfig
+    monitoring: MonitoringConfig
+
+    @classmethod
+    def load(cls, yaml_path: Optional[Path] = None) -> "BookingConfig":
+        """Load booking configuration from YAML file.
+
+        Args:
+            yaml_path: Optional path to YAML file. Defaults to config.yaml in current directory.
+
+        Returns:
+            BookingConfig instance with loaded values.
+
+        Raises:
+            FileNotFoundError: If config.yaml doesn't exist.
+            KeyError: If required fields are missing.
+        """
+        if yaml_path is None:
+            yaml_path = Path("config.yaml")
+
+        if not yaml_path.exists():
+            raise FileNotFoundError(
+                f"Configuration file not found: {yaml_path}. "
+                "Please copy config.yaml.example to config.yaml and fill in your details."
+            )
+
+        with open(yaml_path, "r") as f:
+            data = yaml.safe_load(f)
+
+        payment_data = data.get("payment", {})
+        monitoring_data = data.get("monitoring", {})
+
+        return cls(
+            search_keyword=data.get("search_keyword", ""),
+            payment=PaymentConfig(
+                name_on_card=payment_data.get("name_on_card", ""),
+                card_number=payment_data.get("card_number", ""),
+                cvv=payment_data.get("cvv", ""),
+                exp_month=str(payment_data.get("exp_month", "12")),
+                exp_year=str(payment_data.get("exp_year", "2026")),
+                billing_zip=payment_data.get("billing_zip", ""),
+                confirmation_email=payment_data.get("confirmation_email", ""),
+            ),
+            monitoring=MonitoringConfig(
+                enabled=monitoring_data.get("enabled", False),
+                interval_seconds=monitoring_data.get("interval_seconds", 30),
+                email_on_available=monitoring_data.get("email_on_available", True),
+                smtp_host=monitoring_data.get("smtp_host", "smtp.gmail.com"),
+                smtp_port=monitoring_data.get("smtp_port", 587),
+                smtp_user=monitoring_data.get("smtp_user", ""),
+                smtp_password=monitoring_data.get("smtp_password", ""),
+                notify_email=monitoring_data.get("notify_email", ""),
+            ),
         )

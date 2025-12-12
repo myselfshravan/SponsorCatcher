@@ -1,0 +1,178 @@
+name: Build and Release SponsorCatcher
+
+on:
+  push:
+    tags:
+      - "v*"  # e.g., v0.1.0
+  workflow_dispatch:  # allow manual trigger from GitHub UI too
+
+permissions:
+  contents: write  # required for attaching artifacts to GitHub Releases
+
+jobs:
+  build-windows:
+    name: Build Windows Executable
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  #
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Create Firebase credentials
+        env:
+          FIREBASE_CREDENTIALS_BASE64: ${{ secrets.FIREBASE_CREDENTIALS_BASE64 }}
+        run: |
+          python -c "
+          import os
+          import base64
+          creds_b64 = os.environ.get('FIREBASE_CREDENTIALS_BASE64', '')
+          if creds_b64:
+              creds_json = base64.b64decode(creds_b64).decode('utf-8')
+              with open('firebase-credentials.json', 'w') as f:
+                  f.write(creds_json)
+              print('Firebase credentials created')
+          else:
+              print('WARNING: No Firebase credentials provided - app will run without gatekeeper')
+          "
+
+      - name: Build Windows EXE
+        id: build_exe
+        run: |
+          python build_exe.py --onefile
+          dir dist
+          $exe_file = Get-ChildItem -Path "dist" -Filter "*.exe" | Select-Object -ExpandProperty Name
+          echo "exe_name=$exe_file" >> $env:GITHUB_OUTPUT
+
+      - name: Create Inno Setup Installer
+        shell: pwsh
+        run: |
+          $exe_name = "${{ steps.build_exe.outputs.exe_name }}"
+          $setup_script = @"
+          ; SponsorCatcher Inno Setup Script
+          [Setup]
+          AppName=SponsorCatcher
+          AppVersion=${{ github.ref_name }}
+          DefaultDirName={autopf}\\SponsorCatcher
+          DefaultGroupName=SponsorCatcher
+          OutputBaseFilename=SponsorCatcher-Setup-${{ github.ref_name }}
+          Compression=lzma2
+          SolidCompression=yes
+          [Files]
+          Source: "dist\\$exe_name"; DestDir: "{app}"; Flags: ignoreversion
+          [Icons]
+          Name: "{group}\\SponsorCatcher"; Filename: "{app}\\$exe_name"
+          Name: "{commondesktop}\\SponsorCatcher"; Filename: "{app}\\$exe_name"
+          "@
+          $setup_script | Out-File SponsorCatcher.iss -Encoding ascii
+          choco install innosetup --no-progress
+          iscc SponsorCatcher.iss
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            Output/SponsorCatcher-Setup-${{ github.ref_name }}.exe
+          fail_on_unmatched_files: false
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-${{ github.run_id }}
+          path: |
+            dist/${{ steps.build_exe.outputs.exe_name }}
+            Output/SponsorCatcher-Setup-${{ github.ref_name }}.exe
+          if-no-files-found: error
+
+
+  build-macos:
+    name: Build macOS App
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Create Firebase credentials
+        env:
+          FIREBASE_CREDENTIALS_BASE64: ${{ secrets.FIREBASE_CREDENTIALS_BASE64 }}
+        run: |
+          python -c "
+          import os
+          import base64
+          creds_b64 = os.environ.get('FIREBASE_CREDENTIALS_BASE64', '')
+          if creds_b64:
+              creds_json = base64.b64decode(creds_b64).decode('utf-8')
+              with open('firebase-credentials.json', 'w') as f:
+                  f.write(creds_json)
+              print('Firebase credentials created')
+          else:
+              print('WARNING: No Firebase credentials provided - app will run without gatekeeper')
+          "
+
+      - name: Install create-dmg
+        run: |
+          brew install create-dmg
+
+      - name: Build macOS App Bundle
+        id: build_app
+        run: |
+          python build_exe.py --onefile
+          ls -la dist/
+          app_name=$(ls dist/ | grep '.app$' | head -n 1)
+          echo "app_name=$app_name" >> $GITHUB_OUTPUT
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "SponsorCatcher" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "${{ steps.build_app.outputs.app_name }}" 100 200 \
+            --hide-extension "${{ steps.build_app.outputs.app_name }}" \
+            --app-drop-link 400 200 \
+            "dist/SponsorCatcher-${{ github.ref_name }}.dmg" \
+            "dist/"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/SponsorCatcher-${{ github.ref_name }}.dmg
+          fail_on_unmatched_files: false
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build-${{ github.run_id }}
+          path: |
+            dist/${{ steps.build_app.outputs.app_name }}
+            dist/SponsorCatcher-${{ github.ref_name }}.dmg
+          if-no-files-found: error
