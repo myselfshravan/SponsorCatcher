@@ -62,23 +62,79 @@ class SponsorPage(BasePage):
         Returns:
             Product card WebElement or None if not found.
         """
-        # Find all product cards
-        cards = self.find_all(SponsorPageLocators.PRODUCT_CARDS)
+        card = self._find_matching_card(name)
+        if card:
+            return card
 
+        # Some products only render after scrolling the page/container.
+        print(f"  Product '{name}' not visible yet, scrolling to load more results...")
+        return self._scroll_and_find_product(name)
+
+    def _find_matching_card(self, name: str) -> Optional[WebElement]:
+        """Locate a product card whose title contains the given name."""
+        cards = self.find_all(SponsorPageLocators.PRODUCT_CARDS)
         for card in cards:
             try:
-                # Find the title within this card
-                title_element = card.find_element(
-                    By.CSS_SELECTOR, ".pricing-head h3"
-                )
+                title_element = card.find_element(By.CSS_SELECTOR, ".pricing-head h3")
                 title_text = title_element.text.strip()
-
                 if name.lower() in title_text.lower():
                     return card
             except Exception:
                 continue
-
         return None
+
+    def _scroll_and_find_product(self, name: str, attempts: int = 8) -> Optional[WebElement]:
+        """Scroll through the page to trigger lazy-loaded products."""
+        last_height = -1
+        stagnant_scrolls = 0
+
+        try:
+            container = self.find_fast(SponsorPageLocators.PRODUCTS_CONTAINER, timeout=1.0)
+        except Exception:
+            container = None
+
+        for _ in range(attempts):
+            if container:
+                try:
+                    self.driver.execute_script(
+                        "arguments[0].scrollTop = arguments[0].scrollHeight;", container
+                    )
+                except Exception:
+                    container = None
+
+            try:
+                current_height = self.driver.execute_script("return document.body.scrollHeight")
+                self.driver.execute_script("window.scrollTo(0, arguments[0]);", current_height)
+            except Exception:
+                current_height = last_height
+
+            self.wait_short(0.6)
+
+            card = self._find_matching_card(name)
+            if card:
+                self.scroll_to_element(card)
+                return card
+
+            if current_height == last_height:
+                stagnant_scrolls += 1
+                try:
+                    # Small nudge in case scroll height stops changing but items load on movement
+                    self.driver.execute_script("window.scrollBy(0, 400);")
+                except Exception:
+                    pass
+                if stagnant_scrolls >= 2:
+                    break
+            else:
+                stagnant_scrolls = 0
+
+            last_height = current_height
+
+        try:
+            self.driver.execute_script("window.scrollTo(0, 0);")
+        except Exception:
+            pass
+
+        return self._find_matching_card(name)
 
     def is_product_in_cart(self, product_card: WebElement) -> bool:
         """Check if product is already in cart (has 'selected' class).
