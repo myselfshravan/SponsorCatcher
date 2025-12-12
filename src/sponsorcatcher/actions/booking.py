@@ -39,6 +39,7 @@ class BookingAction:
         self.driver = driver
         self.config = config
         self.booking_config = booking_config
+        self._logged_in = False  # Track login state for monitoring
 
         # Initialize page objects
         self.login_page = LoginPage(driver, config)
@@ -59,12 +60,16 @@ class BookingAction:
         total_steps = 8 if submit_order else 7
         step = 0
 
-        # Step 1: Login
+        # Step 1: Login (skip if already logged in from monitoring)
         step += 1
-        print(f"[{step}/{total_steps}] Logging in...")
-        self.login_page.navigate()
-        self.login_page.login_and_wait()
-        print(f"[{step}/{total_steps}] Login successful!")
+        if not self._logged_in:
+            print(f"[{step}/{total_steps}] Logging in...")
+            self.login_page.navigate()
+            self.login_page.login_and_wait()
+            self._logged_in = True
+            print(f"[{step}/{total_steps}] Login successful!")
+        else:
+            print(f"[{step}/{total_steps}] Already logged in, skipping...")
 
         # Step 2: Navigate to sponsor page
         step += 1
@@ -171,21 +176,34 @@ class BookingAction:
         Returns:
             True if product appears to be available.
         """
-        # Login if needed
-        if "login" in self.driver.current_url.lower():
+        # Login if not already logged in
+        if not self._logged_in:
+            print("  Logging in...")
+            self.login_page.navigate()
             self.login_page.login_and_wait()
+            self._logged_in = True
+            print("  Login successful!")
 
-        # Navigate to sponsor page
+        # Navigate to sponsor page (this refreshes the page)
+        print("  Navigating to sponsor page...")
         self.sponsor_page.navigate()
 
         # Search for product
         keyword = self.booking_config.search_keyword
+        print(f"  Searching for '{keyword}'...")
         self.sponsor_page.search(keyword)
 
         # Find product
         product_card = self.sponsor_page.find_product_by_name(keyword)
         if not product_card:
+            print(f"  Product '{keyword}' not found!")
             return False
 
         # Check availability
-        return self.sponsor_page.is_product_available(product_card)
+        is_available = self.sponsor_page.is_product_available(product_card)
+        if is_available:
+            title = self.sponsor_page.get_product_title(product_card)
+            print(f"  Found available: {title}")
+        else:
+            print("  Product is SOLD OUT")
+        return is_available

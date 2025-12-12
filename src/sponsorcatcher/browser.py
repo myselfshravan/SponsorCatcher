@@ -20,10 +20,14 @@ def create_driver(config: Config) -> WebDriver:
 
     # === SPEED OPTIMIZATIONS ===
 
-    # Disable images and notifications (huge speed boost)
+    # Disable images, notifications, and password manager popups
     prefs = {
         "profile.managed_default_content_settings.images": 2,
         "profile.default_content_setting_values.notifications": 2,
+        # Disable password manager
+        "credentials_enable_service": False,
+        "profile.password_manager_enabled": False,
+        "profile.password_manager_leak_detection": False,
     }
     options.add_experimental_option("prefs", prefs)
 

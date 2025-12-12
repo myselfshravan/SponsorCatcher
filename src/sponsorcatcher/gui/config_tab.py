@@ -132,14 +132,25 @@ class ConfigTab(ttk.Frame):
         button_frame = ttk.Frame(self.scrollable_frame)
         button_frame.pack(fill="x", **padding)
 
-        self.save_btn = ttk.Button(button_frame, text="Save Config", command=self._save_config)
+        self.save_btn = ttk.Button(button_frame, text="Save", command=self._quick_save)
         self.save_btn.pack(side="left", padx=5)
 
-        self.load_btn = ttk.Button(button_frame, text="Load Config", command=self._load_config)
+        self.save_as_btn = ttk.Button(button_frame, text="Save As...", command=self._save_config)
+        self.save_as_btn.pack(side="left", padx=5)
+
+        self.load_btn = ttk.Button(button_frame, text="Load", command=self._load_config)
         self.load_btn.pack(side="left", padx=5)
 
-        self.load_env_btn = ttk.Button(button_frame, text="Load from .env", command=self._load_from_env)
+        self.load_env_btn = ttk.Button(button_frame, text="Load .env", command=self._load_from_env)
         self.load_env_btn.pack(side="left", padx=5)
+
+    def _quick_save(self) -> None:
+        """Quick save to default config path without prompting."""
+        if self.save_to_default_path():
+            config_path = get_config_path()
+            messagebox.showinfo("Saved", f"Configuration saved to:\n{config_path}")
+        else:
+            messagebox.showerror("Error", "Failed to save configuration")
 
     def _save_config(self) -> None:
         """Save current configuration to YAML file."""
